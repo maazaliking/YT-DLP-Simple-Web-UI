@@ -1,0 +1,2 @@
+yt-dlp
+gradio==4.44.1
