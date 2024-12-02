@@ -4,7 +4,10 @@ import os
 import subprocess
 import time
 from yt_dlp import YoutubeDL
-
+import urllib.parse
+import datetime
+import os
+os.environ['GRADIO_ANALYTICS_ENABLED'] = 'False'
 # 全局变量
 BASE_VIDEO_DIR = os.path.join(os.getcwd(), "videos")
 should_stop = False
@@ -20,15 +23,20 @@ def clear_video_preview():
 def validate_youtube_url(url):
     if not url.strip():
         return False, "URL cannot be empty."
-    
-    youtube_regex = r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'
-    match = re.match(youtube_regex, url)
-    
-    if not match:
-        return False, "Invalid YouTube URL. Please enter a valid YouTube video URL."
-    
-    return True, "Valid YouTube URL."
-
+    try:
+        parsed_url = urllib.parse.urlparse(url)
+        domain = parsed_url.netloc
+        if 'youtube.com' in domain:
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            if 'v' in query_params:
+                video_id = query_params['v'][0]
+                return True, video_id
+            else:
+                return False, "No video ID found in the URL."
+        else:
+            return False, "Invalid domain. Please enter a valid YouTube video URL."
+    except Exception as e:
+        return False, f"Invalid URL: {str(e)}"
 def get_video_info(url, proxy):
     is_valid, message = validate_youtube_url(url)
     if not is_valid:
@@ -51,7 +59,7 @@ def get_video_info(url, proxy):
             view_count = info.get('view_count', 'N/A')
             upload_date = info.get('upload_date', 'N/A')
             
-            result = f"Title: {title}\nChannel: {channel}\nDuration: {duration} seconds\nViews: {view_count}\nUpload Date: {upload_date}"
+            result = f"ID : {message}\nTitle: {title}\nChannel: {channel}\nDuration: {duration} seconds\nViews: {view_count}\nUpload Date: {upload_date}"
             
             result += "\n\nAvailable Formats:\n"
             for format in info.get('formats', []):
@@ -73,7 +81,7 @@ def download_video(url, video_format, merge_format, output_template, proxy, save
     if not is_valid:
         yield message, None
         return
-
+    video_id= message
     should_stop = False
     
     # 确定保存目录
@@ -116,26 +124,24 @@ def download_video(url, video_format, merge_format, output_template, proxy, save
             if output:
                 print(output.strip())  # 直接打印到控制台
                 elapsed_time = time.time() - start_time
-                yield f"Downloading... Elapsed time: {elapsed_time:.2f} seconds\n{output.strip()} ({time.time()})", None
+                yield f"Downloading... Elapsed time: {elapsed_time:.2f} seconds\n{output.strip()} ({time.strftime('%Y-%m-%d %H:%M:%S')})", None
         
         if not should_stop:
             current_process.wait()
             if current_process.returncode == 0:
-                message = f"Download completed successfully. Video saved in: {video_dir} ({time.time()})"
-                print(message)
-                # 查找下载的视频文件
+                message = f"Download completed successfully. Video saved in: {video_dir} ({time.strftime('%Y-%m-%d %H:%M:%S')})"
                 for file in os.listdir(video_dir):
-                    if file.endswith(('.mp4', '.webm', '.mkv')):  # 添加其他可能的视频格式
+                    if file.endswith(('.mp4', '.webm', '.mkv')) and video_id in file  :  # 添加其他可能的视频格式
                         video_path = os.path.join(video_dir, file)
                         yield message, video_path
-                        return
-                yield message, None  # 如果没有找到视频文件
+                        return 
+                yield message, None
             else:
-                message = f"Download failed with return code: {current_process.returncode}( {time.time()})"
+                message = f"Download failed with return code: {current_process.returncode}( {time.strftime('%Y-%m-%d %H:%M:%S')})"
                 print(message)
                 yield message, None
     except Exception as e:
-        error_message = f"An error occurred: {str(e)} ({time.time()})"
+        error_message = f"An error occurred: {str(e)} ({time.strftime('%Y-%m-%d %H:%M:%S')})"
         print(error_message)
         yield error_message, None
     finally:
@@ -183,10 +189,24 @@ with gr.Blocks(theme=gr.themes.Soft()) as iface:
             
             with gr.Row():
                 with gr.Column():
-                    save_dir = gr.Textbox(label="Save Directory", placeholder="Leave empty for root directory")
+                    save_dir = gr.Textbox(
+                        label="Save Directory",
+                        value=lambda: datetime.datetime.now().strftime("%m%d"),
+                        placeholder="Leave empty for root directory"
+                    )
                     output_template = gr.Textbox(label="Output Template", value="%(id)s-%(title)s.%(ext)s")
                 with gr.Column():
-                    video_format = gr.Textbox(label="Video Format", value="bestvideo[height<=1080]+bestaudio/best[height<=1080]")
+                    # 将 Video Format 的文本框改为可编辑的下拉选择框
+                    video_format = gr.Dropdown(
+                        label="Video Format",
+                        value="bestvideo[height<=480]+bestaudio/best[height<=480]",
+                        choices=[
+                            "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+                            "bestvideo[height<=720]+bestaudio/best[height<=720]",
+                            "bestvideo[height<=480]+bestaudio/best[height<=480]"
+                        ]
+                     
+                    )
                     merge_format = gr.Textbox(label="Merge Output Format", value="mp4")
             
             extra_params = gr.Textbox(label="Extra Parameters", value="--restrict-filenames --abort-on-unavailable-fragment")
@@ -240,4 +260,4 @@ with gr.Blocks(theme=gr.themes.Soft()) as iface:
 )   
 
 if __name__ == "__main__":
-    iface.launch()
+    iface.launch(share=False,auth=("username", "password"))
