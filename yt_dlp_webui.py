@@ -7,6 +7,7 @@ from yt_dlp import YoutubeDL
 import urllib.parse
 import datetime
 import os
+import json
 os.environ['GRADIO_ANALYTICS_ENABLED'] = 'False'
 # 全局变量
 BASE_VIDEO_DIR = os.path.join(os.getcwd(), "videos")
@@ -17,6 +18,21 @@ current_process = None
 if not os.path.exists(BASE_VIDEO_DIR):
     os.makedirs(BASE_VIDEO_DIR)
 
+# 加载配置文件
+config_file_path = os.path.join(os.getcwd(), 'config.json')
+if os.path.exists(config_file_path):
+    with open(config_file_path, 'r') as f:
+        config = json.load(f)
+else:
+    config = {
+        'proxy': '',
+        'video_format': '',
+        'merge_format': '',
+        'output_template': '%(id)s',
+        'extra_params': '',
+        'username': '',
+        'password': ''
+    }
 
 def clear_video_preview():
     return None
@@ -167,15 +183,25 @@ with gr.Blocks(theme=gr.themes.Soft()) as iface:
     gr.Markdown("# 🎥 YouTube Video Downloader and Info Extractor")
     gr.Markdown(f"📁 Videos will be saved in subdirectories of: {BASE_VIDEO_DIR}")
     
-    proxy = gr.State("socks5://127.0.0.1:8082")
-    
+    proxy = gr.State(config.get('proxy', ''))
+
     with gr.Row():
-        proxy_input = gr.Textbox(label="Proxy Settings", value="socks5://127.0.0.1:8082")
+        proxy_input = gr.Textbox(
+            label="Proxy Settings",
+            value=config.get('proxy', ''),
+        )
         proxy_update_btn = gr.Button("Update Proxy", variant="secondary")
         
-    current_proxy_display = gr.Textbox(label="Current Proxy", value="Current proxy: socks5://127.0.0.1:8082", interactive=False)
+    current_proxy_display = gr.Textbox(
+        label="Current Proxy",
+        value=f"Current proxy: {config.get('proxy', '')}",
+        interactive=False
+    )
     def update_proxy_state(new_proxy):
         proxy_value, display_value = update_proxy(new_proxy)
+        config['proxy'] = proxy_value
+        with open(config_file_path, 'w') as f:
+            json.dump(config, f)
         return proxy_value, display_value
     proxy_update_btn.click(update_proxy_state, inputs=[proxy_input], outputs=[proxy, current_proxy_display])
     with gr.Tabs():
@@ -194,12 +220,16 @@ with gr.Blocks(theme=gr.themes.Soft()) as iface:
                         value=lambda: datetime.datetime.now().strftime("%m%d"),
                         placeholder="Leave empty for root directory"
                     )
-                    output_template = gr.Textbox(label="Output Template", value="%(id)s-%(title)s.%(ext)s")
+                    output_template = gr.Textbox(
+                        label="Output Template",
+                        value=config.get('output_template', '%(id)s-%(title)s.%(ext)s')
+                    )
                 with gr.Column():
                     # 将 Video Format 的文本框改为可编辑的下拉选择框
                     video_format = gr.Dropdown(
                         label="Video Format",
-                        value="bestvideo[height<=480]+bestaudio/best[height<=480]",
+                        allow_custom_value=True,
+                        value=config.get('video_format', 'bestvideo[height<=480]+bestaudio/best[height<=480]'),
                         choices=[
                             "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
                             "bestvideo[height<=720]+bestaudio/best[height<=720]",
@@ -207,9 +237,15 @@ with gr.Blocks(theme=gr.themes.Soft()) as iface:
                         ]
                      
                     )
-                    merge_format = gr.Textbox(label="Merge Output Format", value="mp4")
+                    merge_format = gr.Textbox(
+                        label="Merge Output Format",
+                        value=config.get('merge_format', 'mp4')
+                    )
             
-            extra_params = gr.Textbox(label="Extra Parameters", value="--restrict-filenames --abort-on-unavailable-fragment")
+            extra_params = gr.Textbox(
+                label="Extra Parameters",
+                value=config.get('extra_params', '--restrict-filenames --abort-on-unavailable-fragment')
+            )
             
             output = gr.Textbox(label="Download Status", lines=10)
             with gr.Column():
@@ -260,4 +296,4 @@ with gr.Blocks(theme=gr.themes.Soft()) as iface:
 )   
 
 if __name__ == "__main__":
-    iface.launch(share=False,auth=("username", "password"))
+    iface.launch(share=False,auth=(config["username"], config["password"]))

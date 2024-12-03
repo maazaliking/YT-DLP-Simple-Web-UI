@@ -1,0 +1,1 @@
+{"proxy": "socks5://127.0.0.1:8082", "video_format": "bestvideo[height<=480]+bestaudio/best[height<=480]", "merge_format": "mp4", "output_template": "%(id)s-%(title)s.%(ext)s", "extra_params": "--restrict-filenames --abort-on-unavailable-fragment", "username": "username", "password": "password"}
