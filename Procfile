@@ -1,1 +1,1 @@
-web: python main.py
+web: python yt_dlp_webui.py
